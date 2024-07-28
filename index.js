@@ -4,9 +4,11 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const { User } = require("./models/user");
 const { Log } = require("./models/log");
+const cors = require('cors')
 
 const app = express();
 app.use(bodyParser.json());
+app.use(cors());
 
 const client = mongoose
   .connect(process.env.dbURI)
@@ -14,7 +16,6 @@ const client = mongoose
   .catch((err) => console.log(err));
 
 //middleweres from bodyParser
-// app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use("/public", express.static(`${process.cwd()}/public`));
 
