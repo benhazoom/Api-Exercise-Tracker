@@ -4,13 +4,13 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const { User } = require("./models/user");
 const { Log } = require("./models/log");
-const cors = require('cors')
+const cors = require("cors");
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-const client = mongoose
+mongoose
   .connect(process.env.dbURI)
   .then((result) => app.listen(8080))
   .catch((err) => console.log(err));
@@ -21,9 +21,11 @@ app.use("/public", express.static(`${process.cwd()}/public`));
 
 app.use(express.static("public"));
 
+//main page
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/views/index.html");
 });
+
 
 // Route to create a new user
 app.post("/api/users", async (req, res) => {
@@ -39,14 +41,8 @@ app.post("/api/users", async (req, res) => {
 
     // Create a new user if none exists
     const newUser = new User({ username });
-
     await newUser.save();
 
-    //logging the object responded from the call
-    console.log({
-      username: newUser.username,
-      _id: newUser._id,
-    });
     res.json({
       username: newUser.username,
       _id: newUser._id,
@@ -56,31 +52,30 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
+
 // Route to get all users
 app.get("/api/users", async (req, res) => {
   try {
     // Fetch all users from the database
     const users = await User.find();
 
-    //logging the object responded from the call
-    console.log("LOGGING USERS - " + users);
-    res.status(200).json(users);
+    res.json(users);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.json({ error: error.message });
   }
 });
+
 
 // Route to add a log to a user
 app.post("/api/users/:_id/exercises", async (req, res) => {
   try {
-    console.log("LOGGING EXERCISES");
     const { _id } = req.params;
     const { description, duration, date } = req.body;
 
     // Find the user
     const user = await User.findById(_id);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.json({ error: "User not found" });
     }
 
     // Create and save new log
@@ -90,19 +85,10 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
       duration,
       date: date ? new Date(date) : new Date(),
     });
-
-    console.log(newLog);
     await newLog.save();
 
-    //logging the object responded from the call
-    console.log({
-      _id: user._id,
-      username: user.username,
-      date: newLog.date.toDateString(),
-      duration: newLog.duration,
-      description: newLog.description,
-    });
-    res.status(201).json({
+    //return a response
+    res.json({
       _id: user._id,
       username: user.username,
       date: newLog.date.toDateString(),
@@ -110,44 +96,74 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
       description: newLog.description,
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.json({ error: error.message });
   }
 });
+
 
 //retrieveing a full exercise log of any user.
 app.get("/api/users/:_id/logs", async (req, res) => {
   try {
+    //defining veriables
     const userID = req.params._id;
     const { from, to, limit } = req.query;
-
-    
-    console.log("LOGGING ALL THE EXERCISE LOGS for id: " + userID);
-    const logs = await Log.find({ userID }).select('-_id -userID -__v');;
     const user = await User.findById(userID);
-    if (logs.length === 0) {
-      return res.status(404).json({ error: "No logs found for this user" });
+    let logs;
+
+    // no optional parameters has been specified,
+    if (from === undefined && to === undefined && limit === undefined) {
+      logs = await Log.find({ userID });
+      console.log(logs);
+    } else {
+
+    //mongoDB should ignore the date option if from and to are undefined apperently it didnt happend needs more studing about it 
+    //dividing to two cases : dates are defined or not defined at all
+    if (from !== undefined || to !== undefined) {
+      logs = await Log.find({
+        userID: userID,
+        date: {
+          $gte: from,
+          $lte: to,
+        },
+      })
+        .limit(limit)
+        .select("-_id -userID -__v");//remove these properties from found documents
+    } else {
+      logs = await Log.find({
+        userID: userID,
+      })
+        .limit(limit)
+        .select("-_id -userID -__v");
+    }
+  }
+
+    if (typeof logs == "undefined" || logs.length === 0) {
+      return res.json({ error: "No logs found for this user" });
     }
 
-    // Transform logs and response
-    const transformedLogs = logs.map(log => {
+    // constructing valid response
+    const transformedLogs = logs.map((log) => {
       return {
         description: log.description,
         duration: log.duration,
-        date: new Date(log.date).toDateString() // Format date as a readable string
+        date: new Date(log.date).toDateString(), // Format date as a readable string
       };
     });
-
     const response = {
       _id: user._id,
       username: user.username,
       count: transformedLogs.length,
-      log: transformedLogs
     };
+    if (from !== undefined) Object.assign(response, { from: from });
+    if (to !== undefined) Object.assign(response, { to: to });
+    response.log = transformedLogs;
+    console.log(response);
 
-    // Return the logs
-    res.status(200).json(response);
+
+    // Return the logs respons
+    res.json(response);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.json({ error: error.message });
   }
 });
 
